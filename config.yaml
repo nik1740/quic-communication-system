@@ -1,0 +1,31 @@
+server:
+  quic_addr: ":8443"
+  tcp_addr: ":8080"
+  cert_file: "./certs/server.crt"
+  key_file: "./certs/server.key"
+  timeout: "30s"
+
+iot:
+  sensor_update_interval: "1s"
+  max_sensors: 100
+  data_retention: "24h"
+
+streaming:
+  video_dir: "./test-videos"
+  qualities:
+    - "480p"
+    - "720p"
+    - "1080p"
+  segment_length: 10
+  buffer_size: 4096
+
+benchmark:
+  duration: "60s"
+  connections: 10
+  data_size: 1024
+  results_dir: "./benchmark-results"
+
+logging:
+  level: "info"
+  format: "json"
+  file: ""
