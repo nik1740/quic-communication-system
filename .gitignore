@@ -1,0 +1,71 @@
+# Binaries
+bin/
+releases/
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+coverage.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# Logs
+logs/
+*.log
+
+# Test results
+test/
+results/
+benchmark_results.json
+
+# Configuration files with secrets
+config/secrets/
+*.key
+*.crt
+*.pem
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker volumes
+data/
+
+# Temporary files
+tmp/
+temp/
+
+# Node modules (if any JS tools are added)
+node_modules/
+
+# Python files (if any Python tools are added)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment files
+.env
+.env.local
+.env.production

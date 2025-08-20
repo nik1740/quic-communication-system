@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  quic-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "4433:4433/udp"  # QUIC server
+      - "8080:8080/tcp"  # HTTP/3 server
+      - "9090:9090/tcp"  # Metrics
+    environment:
+      - LOG_LEVEL=info
+      - SERVER_ADDR=:4433
+      - HTTP_ADDR=:8080
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  tcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./tcp-server"]
+    ports:
+      - "4434:4434/tcp"  # TCP server
+      - "4435:4435/tcp"  # TLS server
+    environment:
+      - LOG_LEVEL=info
+      - TCP_ADDR=:4434
+      - TLS_ADDR=:4435
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  iot-simulator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./iot-client", "--server", "quic-server:4433", "--count", "0"]
+    environment:
+      - LOG_LEVEL=info
+      - DEVICE_TYPE=temperature
+      - LOCATION=datacenter
+      - INTERVAL=5
+    depends_on:
+      - quic-server
+    networks:
+      - quic-network
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+
+  streaming-test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./streaming-client", "--server", "quic-server:8080", "--duration", "60"]
+    environment:
+      - LOG_LEVEL=info
+      - QUALITY=720p
+    depends_on:
+      - quic-server
+    networks:
+      - quic-network
+    profiles:
+      - testing
+
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./benchmark", "--server", "quic-server:4433", "--protocol", "both", "--output", "/data/benchmark_results.json"]
+    environment:
+      - LOG_LEVEL=info
+    depends_on:
+      - quic-server
+      - tcp-server
+    volumes:
+      - ./data:/data
+    networks:
+      - quic-network
+    profiles:
+      - testing
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - quic-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana:/etc/grafana/provisioning
+    networks:
+      - quic-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  network-emulator:
+    image: nicolaka/netshoot
+    command: sleep infinity
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - quic-network
+    profiles:
+      - testing
+
+networks:
+  quic-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  prometheus_data:
+  grafana_data:
