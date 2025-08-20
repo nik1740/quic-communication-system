@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  quic-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8443:8443"
+    command: ["./bin/server"]
+    environment:
+      - SERVER_ADDR=:8443
+      - LOG_LEVEL=info
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - quic-network
+
+  tcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    command: ["./bin/server", "-addr", ":8080", "-protocol", "tcp"]
+    environment:
+      - SERVER_ADDR=:8080
+      - LOG_LEVEL=info
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - quic-network
+
+  iot-simulator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./bin/iot-client", "-server", "https://quic-server:8443", "-duration", "300s"]
+    depends_on:
+      - quic-server
+    networks:
+      - quic-network
+
+  streaming-client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["./bin/streaming-client", "-server", "https://quic-server:8443", "-duration", "60s"]
+    depends_on:
+      - quic-server
+    networks:
+      - quic-network
+
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: [
+      "./bin/benchmark", 
+      "-quic", "https://quic-server:8443",
+      "-tcp", "https://tcp-server:8080",
+      "-test", "latency",
+      "-duration", "60s",
+      "-clients", "10",
+      "-output", "/app/logs/benchmark_results.json"
+    ]
+    depends_on:
+      - quic-server
+      - tcp-server
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - quic-network
+
+networks:
+  quic-network:
+    driver: bridge
