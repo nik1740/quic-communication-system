@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # QUIC Communication Server
+  quic-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "4433:4433/udp"  # QUIC port
+      - "8080:8080/tcp"  # HTTP metrics port
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      - ./config/server.yaml:/app/config/server.yaml:ro
+      - ./logs:/app/logs
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # TCP/TLS Comparison Server
+  tcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.tcp
+    ports:
+      - "4434:4434/tcp"  # TCP port
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      - ./config/tcp-server.yaml:/app/config/server.yaml:ro
+      - ./logs:/app/logs
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # IoT Device Simulator
+  iot-simulator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ./bin/iot-client -server quic-server:4433 -device-id iot-device-1 -device-type temperature -interval 5s
+    depends_on:
+      - quic-server
+    environment:
+      - LOG_LEVEL=info
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # Streaming Client
+  streaming-client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ./bin/streaming-client -server quic-server:4433 -stream-id test-stream -quality 720p -duration 300s
+    depends_on:
+      - quic-server
+    environment:
+      - LOG_LEVEL=info
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - quic-network
+    restart: unless-stopped
+
+  # Benchmark Runner
+  benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: >
+      sh -c "
+        sleep 30 &&
+        ./bin/benchmark -test latency -protocol both -server quic-server:4433 -connections 10 -duration 60s -compare -output /app/results/latency-results.json &&
+        ./bin/benchmark -test throughput -protocol both -server quic-server:4433 -connections 5 -duration 60s -compare -output /app/results/throughput-results.json &&
+        ./bin/benchmark -test iot -protocol both -server quic-server:4433 -connections 20 -duration 120s -compare -output /app/results/iot-results.json &&
+        ./bin/benchmark -test streaming -protocol both -server quic-server:4433 -connections 3 -duration 120s -compare -output /app/results/streaming-results.json
+      "
+    depends_on:
+      - quic-server
+      - tcp-server
+    volumes:
+      - ./results:/app/results
+    networks:
+      - quic-network
+    restart: "no"
+
+networks:
+  quic-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
