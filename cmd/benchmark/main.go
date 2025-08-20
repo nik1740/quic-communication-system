@@ -312,7 +312,7 @@ func displayResults(result BenchmarkResult, logger *logging.Logger) {
 	fmt.Printf("P99 Response Time: %v\n", result.P99ResponseTime)
 	fmt.Printf("Throughput: %.2f MB/s\n", result.Throughput)
 	fmt.Printf("Total Data: %.2f MB\n", float64(result.TotalBytes)/1024/1024)
-	fmt.Println("========================\n")
+	fmt.Println("========================")
 }
 
 func saveResults(result BenchmarkResult, filename string, logger *logging.Logger) error {
