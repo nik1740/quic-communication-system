@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # QUIC Server
+  quic-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quic-server
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - ./certs:/app/certs
+      - ./test-videos:/app/test-videos
+      - ./logs:/app/logs
+      - ./benchmark-results:/app/benchmark-results
+    environment:
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    command: ["./bin/server", "--certs", "/app/certs"]
+    networks:
+      - quic-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-q", "--spider", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # IoT Client Simulator
+  iot-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iot-simulator
+    depends_on:
+      - quic-server
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - SERVER_ADDR=https://quic-server:8443
+    command: [
+      "./bin/iot-client", 
+      "--server", "https://quic-server:8443",
+      "--type", "temperature",
+      "--interval", "5",
+      "--duration", "300"
+    ]
+    networks:
+      - quic-network
+
+  # Streaming Client
+  streaming-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streaming-client
+    depends_on:
+      - quic-server
+    volumes:
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+    environment:
+      - SERVER_ADDR=https://quic-server:8443
+    command: [
+      "./bin/streaming-client",
+      "--server", "https://quic-server:8443",
+      "--stream", "demo1",
+      "--quality", "720p",
+      "--output", "/app/downloads"
+    ]
+    networks:
+      - quic-network
+
+  # Benchmark Tool
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: benchmark
+    depends_on:
+      - quic-server
+    volumes:
+      - ./benchmark-results:/app/benchmark-results
+      - ./logs:/app/logs
+    environment:
+      - SERVER_ADDR=https://quic-server:8443
+    command: [
+      "./bin/benchmark",
+      "--server", "https://quic-server:8443",
+      "--test", "iot",
+      "--duration", "60",
+      "--connections", "10",
+      "--rate", "5",
+      "--output", "/app/benchmark-results/quic-iot-benchmark.json"
+    ]
+    networks:
+      - quic-network
+    profiles:
+      - benchmark
+
+  # TCP/TLS Benchmark for comparison
+  tcp-benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tcp-benchmark
+    depends_on:
+      - quic-server
+    volumes:
+      - ./benchmark-results:/app/benchmark-results
+      - ./logs:/app/logs
+    environment:
+      - SERVER_ADDR=https://quic-server:8080
+    command: [
+      "./bin/benchmark",
+      "--server", "https://quic-server:8080",
+      "--test", "iot",
+      "--duration", "60",
+      "--connections", "10",
+      "--rate", "5",
+      "--quic=false",
+      "--output", "/app/benchmark-results/tcp-iot-benchmark.json"
+    ]
+    networks:
+      - quic-network
+    profiles:
+      - benchmark
+
+networks:
+  quic-network:
+    driver: bridge
+
+volumes:
+  certs:
+  test-videos:
+  downloads:
+  benchmark-results:
+  logs:
